@@ -14,7 +14,7 @@ if (DBselect("SHOW TABLES LIKE 'glld'")->num_rows==0 ){
 }
 
 //update/create graph on Host
-function CheckHost($host, $task){
+function graphCheck($host, $task){
   echo "{$host['name']}: ";
   $tograph=getHostItems($host, $task); //filter items to find derived from prototype
   echo "Found ".count($tograph)." LLD items to draw. ";
@@ -31,12 +31,12 @@ function CheckHost($host, $task){
     ]);
 
   if(!$graph) {
-    $g=MakeGraph($task, $tograph);
-    echo "Graph does not exist, created ({$g['graphid']})\n";
+    $g=graphMake($task, $tograph);
+    echo "Graph does not exist, created ({$g['graphids'][0]})\n";
   }
   elseif(count($graph[0]['items']) != count($tograph)) {
-    $g=MakeGraph($task, $tograph, $graph[0]['graphid']);
-    echo "Graph exist with different items count, updated ({$g['graphid']})\n";
+    $g=graphMake($task, $tograph, $graph[0]['graphid']);
+    echo "Graph exist with different items count, updated ({$graph[0]['graphid']})\n";
   }
   else {
     $graph=reset($graph); //[0]
@@ -59,25 +59,30 @@ function CheckHost($host, $task){
       if(!$eq) echo "Not all needed items drawn, updating\n";
     }
     if($eq) echo "Graph exist and has all the items, skipping\n";
-    else MakeGraph($task, $tograph, $graph['graphid']);
+    else graphMake($task, $tograph, $graph['graphid']);
   }
 }
 
 //create or update graph
-function MakeGraph($task, $tograph, $graphid=0){
+function graphMake($task, $tograph, $graphid=0){
   global $colors;
-  $colornum=0;
+  $colornum=$order=0;
+
+  //sort
+  $tograph = CMacrosResolverHelper::resolveItemNames($tograph);
+  order_result($tograph, 'name_expanded');
 
   //prepare items
   foreach($tograph as $i){
     $gitems[] = array_merge(
       $task['items'][ $i['itemDiscovery']['parent_itemid'] ],
       array(
+          'sortorder' => $order,
           'itemid'=>$i['itemid'],
           'color' => $colors[$colornum]
         )
     );
-    $colornum++;
+    $colornum++; $order++;
     if($colornum >= count($colors)) $colornum=0;
   }
   $data=$task['graph'];
@@ -93,7 +98,7 @@ function MakeGraph($task, $tograph, $graphid=0){
 //show list
 function taskList(){
   //get model
-  $tasks=LoadTasks();
+  $tasks=taskLoad();
 
   //prepare view
   $widget = (new CWidget())
@@ -164,7 +169,7 @@ function taskEdit(){
   if(getRequest('delete')) taskDelete(); //delete form button
 
   //read from db
-  if($id && !getRequest('form_refresh')) $data=LoadTasks($id);
+  if($id && !getRequest('form_refresh')) $data=taskLoad($id);
   //defaults
   else {
     $checkbox = empty($_POST['form']) ? 1 : 0;
@@ -231,14 +236,15 @@ function taskEdit(){
       if (!$data['templateid']) show_messages(false, '', "No template selected");
       elseif (!count($data['items'])) show_messages(false, '', "No items assigned");
       else {
-        if(getRequest('form')=='update') $old=LoadTasks($id); //for graphs name update
+        if(getRequest('form')=='update') $old=taskLoad($id); //for graphs name update
         DBstart();
         $sql="templateid={$data['templateid']}, graph=".zbx_dbstr(serialize($data['graph'])).", items=".zbx_dbstr(serialize($data['items']));
         $result = getRequest('form')=='update' ? DBexecute("UPDATE glld SET $sql WHERE id=$id") : DBexecute("INSERT INTO glld SET $sql");
         DBend($result);
         if($result) {
           if(getRequest('form')=='update') taskUpdate($old, $data);
-          header("Location: ?"); die();
+          taskList();
+          die();
         }
       }
     }
@@ -500,45 +506,51 @@ function taskDelete(){
   DBstart();
   $result=DBexecute("DELETE FROM glld WHERE id IN(".implode(',', getRequest('taskid')).")");
   DBend($result);
-  if($result) {header("Location: ?"); die();}
+  if($result) show_messages(true, "Task(s) deleted (".implode(',', getRequest('taskid')).")");
 }
 
 //run task
 function taskRun(){
+  while (@ob_end_flush());
   echo "<pre>";
   foreach(getRequest('taskid') as $id){
-    $task=LoadTasks($id);
+    $task=taskLoad($id);
     if(!$task) {echo "\nTask id=$id not found!\n"; continue;}
     if($task['status']) {echo "\nGraph '{$task['graph']['name']}' is disabled\n"; continue;}
     $hosts = getHosts($task['templateid']);
     echo "\nChecking graph '{$task['graph']['name']}' on ".count($hosts)." host(s)\n";
-    foreach($hosts as $host) CheckHost($host, $task);
+    foreach($hosts as $host) graphCheck($host, $task);
   }
   echo "</pre>";
+  echo (new CButton('ok', 'Back'))->onClick("javascript: return redirect('?');");
 }
 
 //clean all graphs for task
 function taskClean() {
-  echo "<pre>";
   foreach(getRequest('taskid') as $id){
-    $task=LoadTasks($id);
-    if(!$task) echo "Task id=$id not found!\n";
+    $task=taskLoad($id);
+    if(!$task) {show_messages(false, null, "Task id=$id not found!\n"); continue;}
     $hosts = getHosts($task['templateid']);
-    echo "\nRemoving graph '{$task['graph']['name']}' from ".count($hosts)." host(s)\n";
-    foreach($hosts as $host){
-      $graph = API::Graph()->get([
-        'hostids' => $host['hostid'],
-        'templated' => false,
-        'inherited' => false,
-        'editable' => true,
-        'filter' => ['name' => $task['graph']['name']],
-        'output' => []
-      ]);
-      if(!$graph) echo "{$host['name']}: graph not found\n";
-      else API::Graph()->delete([$graph[0]['graphid']]);
-    }
+    if(graphClean($hosts, $task['graph']['name']))
+      show_messages(true, "Removed graph '{$task['graph']['name']}' from ".count($hosts)." host(s)");
   }
-  echo "</pre>";
+}
+
+//Delete all graphs by name on all hosts
+function graphClean($hosts, $graphname){
+  if(!$hosts || !$graphname) return false;
+  foreach($hosts as $host){
+    $graph = API::Graph()->get([
+      'hostids' => $host['hostid'],
+      'templated' => false,
+      'inherited' => false,
+      'editable' => true,
+      'filter' => ['name' => $graphname],
+      'output' => []
+    ]);
+    if($graph) API::Graph()->delete([$graph[0]['graphid']]);
+  }
+  return true;
 }
 
 //get all hosts in given template and its child templates
@@ -547,8 +559,7 @@ function getHosts($templateid){
   $hosts = API::Host()->get([
     'output' => ['name','status'],
     'templateids' => $templateid,
-    //'limit' => 1,
-    //'editable' => true
+    'editable' => true,
     'templated_hosts' => true
   ]);
   foreach($hosts as $host){
@@ -559,7 +570,7 @@ function getHosts($templateid){
 }
 
 //load task(s) from db, no id = all
-function LoadTasks($id=null){
+function taskLoad($id=null){
   $tasks=[];
   $where=($id)? "WHERE id=".(int)$id : "";
   $res=DBselect("SELECT * FROM glld $where");
@@ -590,12 +601,13 @@ function getHostItems($host, $task){
   $tograph=[];
   $cache=[]; //speed up processing parent chain
   $items = API::Item()->get([
-      'output' => [],
+      'output' => ['hostid', 'name', 'key_'], //need for macro resolver > sort
       'selectItemDiscovery' => ['parent_itemid'],
       'hostids' => $host['hostid'],
       'inherited' => false,
       'monitored' => true,
-      'editable' => true
+      'editable' => true,
+      'sortfield' => 'name'
     ]);
 
   foreach ($items as $i) {
@@ -629,7 +641,43 @@ function getHostItems($host, $task){
 
 //force update
 function taskUpdate($old, $new){
-    // $hosts = getHosts($task['templateid']);
-    // echo "\nChecking graph '{$task['graph']['name']}' on ".count($hosts)." host(s)\n";
-    // foreach($hosts as $host) CheckHost($host, $task);
+  $hosts = getHosts($new['templateid']);
+  //template changed, cleanup graph from old hosts
+  if($old['templateid'] != $new['templateid']){
+    $todel=[];
+    foreach(getHosts($old['templateid']) as $host){
+      $found=false;
+      foreach($hosts as $skip) if($host['hostid']==$skip['hostid']) {$found=true; break;}
+      if(!$found) $todel[]=$host;
+    }
+    if( $todel && graphClean($todel, $old['graph']['name']) )
+      show_messages(true, "Template changed, cleaned up graph from old ".count($todel)." hosts\n");
+  }
+  //smth other changed - just force update the graphs
+  $result=[];
+  foreach($hosts as $host){
+    $tograph=getHostItems($host, $new); //filter items to find derived from prototype
+    if(!count($tograph)) {
+      show_messages(false, null, "No items to draw found, check that you have Write access to host: {$host['name']}!\n");
+      return;
+    }
+    //update graphs found by old name
+    $graph = API::Graph()->get([
+        'hostids' => $host['hostid'],
+        'templated' => false,
+        'inherited' => false,
+        'selectItems' => [],
+        'editable' => true,
+        'filter' => ['name' => $old['graph']['name']]
+      ]);
+    if(!$graph) {
+      $g=graphMake($new, $tograph);
+      $result[]['message'].="{$host['name']}: Graph does not exist, created ({$g['graphid']})";
+    }
+    else{
+      $g=graphMake($new, $tograph, $graph[0]['graphid']);
+      $result[]['message'].="{$host['name']}: Graph exists, updated ({$graph[0]['graphid']})";
+    }
+  }
+  makeMessageBox(true, $result, count($result)." graphs updated")->show();
 }

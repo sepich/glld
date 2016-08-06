@@ -10,15 +10,14 @@ $page['file'] = 'glld.php';
 $page['scripts'] = ['multiselect.js'];
 
 require_once dirname(__FILE__).'/include/page_header.php';
-ob_end_flush();
 
 //routing
 switch (getRequest('action')) {
-  case 'task.massdisable':  taskStatus(true);    break;
-  case 'task.massenable':   taskStatus(false);   break;
-  case 'task.massrun':      taskRun();           break;
-  case 'task.massclean':    taskClean();         break;
-  case 'task.massdelete':   taskDelete();        break;
+  case 'task.massdisable':  taskStatus(true);           break;
+  case 'task.massenable':   taskStatus(false);          break;
+  case 'task.massrun':      taskRun();                  break;
+  case 'task.massclean':    taskClean();  taskList();   break;
+  case 'task.massdelete':   taskDelete(); taskList();   break;
   default:
     if (isset($_REQUEST['form'])) taskEdit();
     else taskList();
