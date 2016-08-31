@@ -117,7 +117,7 @@ function graphMake($task, $tograph, $graphid=0){
 
   //sort
   $tograph = CMacrosResolverHelper::resolveItemNames($tograph);
-  order_result($tograph, 'name_expanded');
+  order_result($tograph, 'name_expanded', ZBX_SORT_DOWN);
 
   //prepare items
   foreach($tograph as $i){
