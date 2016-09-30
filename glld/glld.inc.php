@@ -658,7 +658,7 @@ function taskUpdate($old, $new){
   foreach($hosts as $host){
     $tograph=getHostItems($host, $new); //filter items to find derived from prototype
     if(!count($tograph)) {
-      // Skip host is it does not have 
+      // Skip host if it does not have items discovered using this prototype
       $result[]['message'].="{$host['name']}: host has no items discovered with given item prototype, skipped";
       continue;
     }
