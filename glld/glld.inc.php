@@ -658,8 +658,9 @@ function taskUpdate($old, $new){
   foreach($hosts as $host){
     $tograph=getHostItems($host, $new); //filter items to find derived from prototype
     if(!count($tograph)) {
-      show_messages(false, null, "No items to draw found, check that you have Write access to host: {$host['name']}!\n");
-      return;
+      // Skip host is it does not have 
+      $result[]['message'].="{$host['name']}: host has no items discovered with given item prototype, skipped";
+      continue;
     }
     //update graphs found by old name
     $graph = API::Graph()->get([
