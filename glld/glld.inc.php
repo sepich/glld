@@ -286,7 +286,7 @@ function taskEdit(){
         if(getRequest('form')=='update') $old=taskLoad($id); //for graphs name update
         DBstart();
         $update_sql="templateid={$data['templateid']}, graph=".zbx_dbstr(serialize($data['graph'])).", items=".zbx_dbstr(serialize($data['items']));
-        $insert_sql="(templateid, graph, items) VALUES ({$data['templateid']}, ".zbx_dbstr(serialize($data['graph'])).", ".zbx_dbstr(serialize($data['items'])).");";
+        $insert_sql="(templateid, graph, items, disabled) VALUES ({$data['templateid']}, ".zbx_dbstr(serialize($data['graph'])).", ".zbx_dbstr(serialize($data['items'])).", 0);";
         $result = getRequest('form')=='update' ? DBexecute("UPDATE glld SET $update_sql WHERE id=$id") : DBexecute("INSERT INTO glld $insert_sql");
         DBend($result);
         if($result) {
