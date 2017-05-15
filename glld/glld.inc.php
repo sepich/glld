@@ -2,15 +2,62 @@
 
 $colors=['2ECC40','FF4136','001F3F','85144B','0074D9','FF851B','7FDBFF','F012BE','39CCCC','3D9970','01FF70','FFDC00','B10DC9','dddddd','aaaaaa','111111'];
 
+function tableExists() {
+  global $DB;
+
+  $result = false;
+
+  switch ($DB['TYPE']) {
+    case ZBX_DB_MYSQL:
+      if (DBselect("SHOW TABLES LIKE 'glld'")->num_rows==0) {
+        $result = true;
+      }
+      break;
+    case ZBX_DB_POSTGRESQL:
+      $r = DBfetch(
+       	      DBselect(
+          "SELECT 1 FROM information_schema.tables WHERE table_name = 'glld';"
+        )
+      );
+      if (!empty($r)) {
+        $result = true;
+      }
+      break;
+  }
+
+  return $result;
+
+}
+
+function createTable() {
+  global $DB;
+
+  switch ($DB['TYPE']) {
+    case ZBX_DB_MYSQL:
+      if(!DBexecute("CREATE TABLE `glld` (
+        `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `templateid` INT NOT NULL,
+        `graph` TEXT NOT NULL,
+        `items` TEXT NOT NULL,
+        `disabled` BOOL NOT NULL)"))
+        die("Unable to create table 'glld' for configuration storage");
+      break;
+    case ZBX_DB_POSTGRESQL:
+      if(!DBexecute("CREATE TABLE glld (
+        id SERIAL PRIMARY KEY,
+        templateid INT NOT NULL,
+        graph TEXT NOT NULL,
+        items TEXT NOT NULL,
+        disabled INT DEFAULT 0)"))
+        die("Unable to create table 'glld' for configuration storage");
+      break;
+  }
+}
+
+
 //check if table exist
-if (DBselect("SHOW TABLES LIKE 'glld'")->num_rows==0 ){
-  if(!DBexecute("CREATE TABLE `glld` (
-      `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      `templateid` INT NOT NULL,
-      `graph` TEXT NOT NULL,
-      `items` TEXT NOT NULL,
-      `disabled` BOOL NOT NULL)"))
-    die("Unable to create table 'glld' for configuration storage");
+if (!tableExists()){
+  createTable();
 }
 
 //update/create graph on Host
@@ -238,8 +285,9 @@ function taskEdit(){
       else {
         if(getRequest('form')=='update') $old=taskLoad($id); //for graphs name update
         DBstart();
-        $sql="templateid={$data['templateid']}, graph=".zbx_dbstr(serialize($data['graph'])).", items=".zbx_dbstr(serialize($data['items']));
-        $result = getRequest('form')=='update' ? DBexecute("UPDATE glld SET $sql WHERE id=$id") : DBexecute("INSERT INTO glld SET $sql");
+        $update_sql="templateid={$data['templateid']}, graph=".zbx_dbstr(serialize($data['graph'])).", items=".zbx_dbstr(serialize($data['items']));
+        $insert_sql="(templateid, graph, items) VALUES ({$data['templateid']}, ".zbx_dbstr(serialize($data['graph'])).", ".zbx_dbstr(serialize($data['items'])).");";
+        $result = getRequest('form')=='update' ? DBexecute("UPDATE glld SET $update_sql WHERE id=$id") : DBexecute("INSERT INTO glld $insert_sql");
         DBend($result);
         if($result) {
           if(getRequest('form')=='update') taskUpdate($old, $data);
@@ -574,7 +622,7 @@ function taskLoad($id=null){
   $tasks=[];
   $where=($id)? "WHERE id=".(int)$id : "";
   $res=DBselect("SELECT * FROM glld $where");
-  if($res->num_rows) {
+  if($res) {
     while ($row=DBfetch($res)) {
       $tasks[]=[
         'id' => $row['id'],
