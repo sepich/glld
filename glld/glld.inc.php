@@ -120,7 +120,7 @@ function taskList(){
       _('Prototypes'),
       _('Status')
     ]);
-  foreach ($tasks as $task) {
+  if ($tasks) foreach ($tasks as $task) {
     $status = new CCol(
       (new CLink(
         discovery_status2str($task['status']),
