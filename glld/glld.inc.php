@@ -9,7 +9,7 @@ function tableExists() {
 
   switch ($DB['TYPE']) {
     case ZBX_DB_MYSQL:
-      if (DBselect("SHOW TABLES LIKE 'glld'")->num_rows==0) {
+      if (DBselect("SHOW TABLES LIKE 'glld'")->num_rows) {
         $result = true;
       }
       break;
