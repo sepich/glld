@@ -213,7 +213,10 @@ function taskList(){
 //edit/add entry
 function taskEdit(){
   $id=(int)getRequest('id');
-  if(getRequest('delete')) taskDelete(); //delete form button
+  if(getRequest('delete')) { //delete form button
+    taskDelete();
+    return taskList();
+  }
 
   //read from db
   if($id && !getRequest('form_refresh')) $data=taskLoad($id);
