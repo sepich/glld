@@ -438,12 +438,18 @@ function taskEdit(){
     ->addRow(_('Template'),
       (new CMultiSelect([
         'name' => 'templateid',
-        'objectName' => 'templates',
+        'object_name' => 'templates',
         'selectedLimit' => 1,
         'data' => $jsdata,
         'popup' => [
-          'parameters' => 'srctbl=templates&srcfld1=hostid&srcfld2=host&dstfrm=glldForm'.
-            '&dstfld1=templateid&templated_hosts=1&multiselect=0&with_items=1'
+          'parameters' => [
+            'srctbl' => 'templates',
+            'srcfld1' => 'hostid',
+            'srcfld2' => 'host',
+            'dstfrm' => 'glldForm',
+            'dstfld1' => 'templateid',
+            'templated_hosts' => 1
+          ]
         ]
       ]))->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
     );
